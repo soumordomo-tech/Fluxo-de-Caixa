@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle Financeiro Final</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 20px; }
+        .app-card { background: white; padding: 20px; border-radius: 15px; width: 100%; max-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .header { text-align: center; color: #1d4ed8; margin-bottom: 15px; }
+        .caixa-status { display: flex; justify-content: space-around; background: #f9fafb; padding: 10px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #eee; }
+        .valor { font-weight: bold; font-size: 1.1rem; display: block; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+        .row { display: flex; gap: 10px; margin-bottom: 10px; }
+        button { flex: 1; padding: 15px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+        .btn-in { background: #10b981; }
+        .btn-out { background: #ef4444; }
+        .btn-pdf { background: #3b82f6; width: 100%; font-size: 1rem; }
+        .item-lista { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #f0f0f0; }
+        .msg-erro { color: red; font-size: 12px; text-align: center; display: none; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="app-card">
+    <h2 class="header">Fluxo de Caixa</h2>
+    
+    <div class="caixa-status">
+        <div style="text-align:center">Entradas<br><span id="totalIn" class="valor" style="color:#10b981">R$ 0,00</span></div>
+        <div style="text-align:center">Saídas<br><span id="totalOut" class="valor" style="color:#ef4444">R$ 0,00</span></div>
+    </div>
+
+    <input type="text" id="desc" placeholder="O que comprou/vendeu?">
+    <input type="number" id="val" placeholder="Valor R$">
+
+    <div class="row">
+        <button class="btn-in" onclick="registrar('ENTRADA')">Entrada</button>
+        <button class="btn-out" onclick="registrar('SAIDA')">Saída</button>
+    </div>
+    
+    <button class="btn-pdf" onclick="gerarRelatorio()">Baixar Relatório PDF</button>
+    <div id="erroLog" class="msg-erro"></div>
+
+    <div id="historico" style="margin-top:20px; max-height: 250px; overflow-y: auto;"></div>
+</div>
+
+<script>
+    let db = JSON.parse(localStorage.getItem('FINANCAS_V10')) || [];
+
+    function registrar(tipo) {
+        const d = document.getElementById('desc');
+        const v = document.getElementById('val');
+        
+        if (!d.value || !v.value) {
+            alert("Preencha descrição e valor!");
+            return;
+        }
+
+        const novo = {
+            data: new Date().toLocaleDateString('pt-BR'),
+            hora: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
+            desc: d.value,
+            valor: parseFloat(v.value),
+            tipo: tipo
+        };
+
+        db.unshift(novo);
+        localStorage.setItem('FINANCAS_V10', JSON.stringify(db));
+        d.value = ''; v.value = '';
+        renderizar();
+    }
+
+    function renderizar() {
+        const hist = document.getElementById('historico');
+        const tIn = document.getElementById('totalIn');
+        const tOut = document.getElementById('totalOut');
+        let somaIn = 0, somaOut = 0;
+
+        hist.innerHTML = '<strong>Movimentações:</strong>';
+        db.forEach(item => {
+            if(item.tipo === 'ENTRADA') somaIn += item.valor; else somaOut += item.valor;
+            hist.innerHTML += `
+                <div class="item-lista">
+                    <span>${item.desc}</span>
+                    <span style="color: ${item.tipo === 'ENTRADA' ? '#10b981' : '#ef4444'}">
+                        ${item.tipo === 'SAIDA' ? '-' : ''} R$ ${item.valor.toFixed(2)}
+                    </span>
+                </div>`;
+        });
+
+        tIn.innerText = `R$ ${somaIn.toFixed(2)}`;
+        tOut.innerText = `R$ ${somaOut.toFixed(2)}`;
+    }
+
+    async function gerarRelatorio() {
+        const log = document.getElementById('erroLog');
+        log.style.display = 'none';
+
+        try {
+            if (!window.jspdf) throw new Error("Bibliotecas não carregadas. Verifique sua internet.");
+            if (db.length === 0) throw new Error("Adicione dados primeiro.");
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            let tE = 0, tS = 0;
+            const rank = {};
+
+            db.forEach(r => {
+                if(r.tipo === 'ENTRADA') tE += r.valor;
+                else {
+                    tS += r.valor;
+                    rank[r.desc.toLowerCase()] = (rank[r.desc.toLowerCase()] || 0) + r.valor;
+                }
+            });
+
+            const top = Object.entries(rank).sort((a,b) => b[1]-a[1]).slice(0,3);
+
+            doc.setFontSize(18);
+            doc.text("Relatorio de Fluxo de Caixa", 14, 20);
+            
+            doc.setFontSize(10);
+            let y = 30;
+            doc.text("MAIORES GASTOS REGISTRADOS:", 14, y);
+            top.forEach((g, i) => { 
+                y += 7; 
+                doc.text(`${i+1}. ${g[0].toUpperCase()}: R$ ${g[1].toFixed(2)}`, 14, y); 
+            });
+
+            const corpo = db.map(r => [r.data, r.hora, r.tipo, r.desc, `R$ ${r.valor.toFixed(2)}`]);
+            doc.autoTable({ 
+                startY: y + 10, 
+                head: [['Data', 'Hora', 'Tipo', 'Desc', 'Valor']], 
+                body: corpo 
+            });
+
+            let finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFont(undefined, 'bold');
+            doc.text(`Total Entradas: R$ ${tE.toFixed(2)}`, 14, finalY);
+            doc.text(`Total Saidas: R$ ${tS.toFixed(2)}`, 14, finalY + 7);
+            doc.text(`SALDO FINAL: R$ ${(tE - tS).toFixed(2)}`, 14, finalY + 14);
+
+            doc.save("Relatorio_Financeiro.pdf");
+        } catch (err) {
+            log.innerText = err.message;
+            log.style.display = 'block';
+        }
+    }
+
+    renderizar();
+</script>
+
+</body>
+</html>
