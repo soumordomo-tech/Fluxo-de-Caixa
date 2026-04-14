@@ -3,22 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fluxo de Caixa</title>
+    <title>Gestor Financeiro V4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 20px; }
-        .app-card { background: white; padding: 20px; border-radius: 15px; width: 100%; max-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .header { text-align: center; color: #1d4ed8; margin-bottom: 15px; }
-        .caixa-status { display: flex; justify-content: space-around; background: #f9fafb; padding: 10px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #eee; }
-        .valor { font-weight: bold; font-size: 1.1rem; display: block; }
-        input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        .row { display: flex; gap: 10px; margin-bottom: 10px; }
-        button { flex: 1; padding: 15px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
-        .btn-in { background: #10b981; }
+        body { font-family: sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .app-card { background: white; padding: 20px; border-radius: 20px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .header { text-align: center; color: #2563eb; margin-bottom: 20px; }
+        .caixa-status { display: flex; justify-content: space-around; background: #f8fafc; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        .valor-box { text-align: center; font-weight: bold; }
+        input { width: 100%; padding: 14px; margin-bottom: 12px; border: 2px solid #e2e8f0; border-radius: 10px; box-sizing: border-box; font-size: 16px; outline: none; }
+        input:focus { border-color: #2563eb; }
+        .grid-main { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 16px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; font-size: 14px; text-transform: uppercase; }
+        .btn-in { background: #22c55e; }
         .btn-out { background: #ef4444; }
-        .btn-pdf { background: #3b82f6; width: 100%; font-size: 1rem; }
-        .item-lista { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #f0f0f0; }
+        .btn-save { background: #f59e0b; grid-column: span 2; margin-top: 10px; }
+        .btn-view { background: #64748b; grid-column: span 2; }
+        .btn-pdf { background: #3b82f6; grid-column: span 2; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .btn-x { background: #fee2e2; color: #ef4444; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; margin-left: 8px; cursor: pointer; text-transform: none; }
+        #areaBanco { display: none; margin-top: 20px; background: #fffbeb; border: 2px solid #f59e0b; padding: 15px; border-radius: 15px; width: 100%; max-width: 400px; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -27,97 +32,138 @@
     <h2 class="header">Fluxo de Caixa</h2>
     
     <div class="caixa-status">
-        <div style="text-align:center">Entradas<br><span id="totalIn" class="valor" style="color:#10b981">R$ 0,00</span></div>
-        <div style="text-align:center">Saídas<br><span id="totalOut" class="valor" style="color:#ef4444">R$ 0,00</span></div>
+        <div class="valor-box">Entradas<br><span id="resIn" style="color:#22c55e">R$ 0,00</span></div>
+        <div class="valor-box">Saídas<br><span id="resOut" style="color:#ef4444">R$ 0,00</span></div>
     </div>
 
-    <input type="text" id="desc" placeholder="O que comprou/vendeu?">
-    <input type="number" id="val" placeholder="Valor R$">
+    <input type="text" id="campoDesc" placeholder="Ex: Venda Bolo">
+    <input type="number" id="campoVal" placeholder="Valor R$" step="0.01">
 
-    <div class="row">
-        <button class="btn-in" onclick="registrar('ENTRADA')">Entrada</button>
-        <button class="btn-out" onclick="registrar('SAIDA')">Saída</button>
+    <div class="grid-main">
+        <button class="btn-in" onclick="add('ENTRADA')">Entrada</button>
+        <button class="btn-out" onclick="add('SAIDA')">Saída</button>
+        <button class="btn-save" onclick="salvar()">💾 Salvar no Banco</button>
+        <button class="btn-view" onclick="verBanco()">📂 Acessar Dados Salvos</button>
+        <button class="btn-pdf" onclick="gerar(atual,'Relatorio_Hoje')">📄 PDF da Tela</button>
     </div>
-    
-    <button class="btn-pdf" onclick="gerarRelatorio()">Baixar Relatório PDF</button>
 
-    <div id="historico" style="margin-top:20px; max-height: 250px; overflow-y: auto;"></div>
+    <div id="listaHoje" style="margin-top:20px;"></div>
+</div>
+
+<div id="areaBanco">
+    <h3 style="text-align:center; color:#b45309;">Banco Permanente</h3>
+    <button class="btn-pdf" style="margin-bottom:10px; width: 100%;" onclick="gerar(banco,'Relatorio_Geral')">Gerar PDF Completo</button>
+    <button class="btn-out" style="width:100%;" onclick="resetar()">Apagar Tudo</button>
+    <div id="listaSalva" style="margin-top:15px; font-size: 13px;"></div>
 </div>
 
 <script>
-    // Inicia sempre vazio. Não carrega nada do histórico anterior do navegador.
-    let db = []; 
+    let atual = [];
+    let banco = JSON.parse(localStorage.getItem('GESTOR_FIN_V4')) || [];
 
-    function registrar(tipo) {
-        const d = document.getElementById('desc');
-        const v = document.getElementById('val');
+    function add(tipo) {
+        const d = document.getElementById('campoDesc');
+        const v = document.getElementById('campoVal');
         
-        if (!d.value || !v.value) {
-            alert("Preencha descrição e valor!");
-            return;
-        }
+        if (!d.value || !v.value) return alert("Erro: Preencha descrição e valor!");
 
-        // Captura a data e hora exata do clique no botão
-        const agora = new Date();
-        const novo = {
-            data: agora.toLocaleDateString('pt-BR'),
-            hora: agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
-            desc: d.value,
-            valor: parseFloat(v.value),
-            tipo: tipo
-        };
-
-        db.unshift(novo);
-        d.value = ''; 
-        v.value = '';
-        renderizar();
-    }
-
-    function renderizar() {
-        const hist = document.getElementById('historico');
-        const tIn = document.getElementById('totalIn');
-        const tOut = document.getElementById('totalOut');
-        let somaIn = 0, somaOut = 0;
-
-        hist.innerHTML = '<strong>Movimentações da Sessão:</strong>';
-        db.forEach(item => {
-            if(item.tipo === 'ENTRADA') somaIn += item.valor; else somaOut += item.valor;
-            hist.innerHTML += `
-                <div class="item-lista">
-                    <span>${item.desc}</span>
-                    <span style="color: ${item.tipo === 'ENTRADA' ? '#10b981' : '#ef4444'}">
-                        ${item.tipo === 'SAIDA' ? '-' : ''} R$ ${item.valor.toFixed(2)}
-                    </span>
-                </div>`;
+        atual.unshift({
+            id: Date.now(),
+            dt: new Date().toLocaleDateString('pt-BR'),
+            hr: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
+            txt: d.value,
+            vlr: parseFloat(v.value),
+            tp: tipo
         });
 
-        tIn.innerText = `R$ ${somaIn.toFixed(2)}`;
-        tOut.innerText = `R$ ${somaOut.toFixed(2)}`;
+        d.value = ''; 
+        v.value = '';
+        desenhar();
     }
 
-    async function gerarRelatorio() {
-        if (db.length === 0) return alert("Adicione dados primeiro.");
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        let tE = 0, tS = 0;
-        db.forEach(r => { if(r.tipo === 'ENTRADA') tE += r.valor; else tS += r.valor; });
-
-        doc.setFontSize(18);
-        doc.text("Relatorio de Fluxo de Caixa", 14, 20);
-        
-        const corpo = db.map(r => [r.data, r.hora, r.tipo, r.desc, `R$ ${r.valor.toFixed(2)}`]);
-        doc.autoTable({ startY: 30, head: [['Data', 'Hora', 'Tipo', 'Desc', 'Valor']], body: corpo });
-
-        let finalY = doc.lastAutoTable.finalY + 10;
-        doc.text(`Total Entradas: R$ ${tE.toFixed(2)}`, 14, finalY);
-        doc.text(`Total Saidas: R$ ${tS.toFixed(2)}`, 14, finalY + 7);
-        doc.text(`SALDO FINAL: R$ ${(tE - tS).toFixed(2)}`, 14, finalY + 14);
-
-        doc.save("Relatorio_Financeiro.pdf");
+    function remover(id) {
+        atual = atual.filter(i => i.id !== id);
+        desenhar();
     }
 
-    // Garante que a tela comece limpa
-    renderizar();
+    function desenhar() {
+        const list = document.getElementById('listaHoje');
+        const rIn = document.getElementById('resIn');
+        const rOut = document.getElementById('resOut');
+        let sIn = 0, sOut = 0;
+
+        list.innerHTML = '<strong>Lançamentos de agora:</strong>';
+        atual.forEach(i => {
+            if(i.tp === 'ENTRADA') sIn += i.vlr; else sOut += i.vlr;
+            list.innerHTML += `
+            <div class="item-row">
+                <span>${i.txt}<br><small>${i.hr}</small></span>
+                <span style="color:${i.tp==='ENTRADA'?'#22c55e':'#ef4444'}">
+                    ${i.tp==='SAIDA'?'-':''} R$ ${i.vlr.toFixed(2)}
+                    <button class="btn-x" onclick="remover(${i.id})">X</button>
+                </span>
+            </div>`;
+        });
+        rIn.innerText = `R$ ${sIn.toFixed(2)}`;
+        rOut.innerText = `R$ ${sOut.toFixed(2)}`;
+    }
+
+    function salvar() {
+        if(atual.length === 0) return alert("Nada para salvar!");
+        banco = [...atual, ...banco];
+        localStorage.setItem('GESTOR_FIN_V4', JSON.stringify(banco));
+        atual = [];
+        desenhar();
+        alert("Salvo com sucesso!");
+    }
+
+    function verBanco() {
+        const a = document.getElementById('areaBanco');
+        a.style.display = (a.style.display === 'block') ? 'none' : 'block';
+        if(a.style.display === 'block') {
+            const l = document.getElementById('listaSalva');
+            l.innerHTML = banco.length === 0 ? 'Banco vazio.' : '';
+            banco.forEach(i => {
+                l.innerHTML += `<div class="item-row"><span>${i.dt} - ${i.txt}</span><span>R$ ${i.vlr.toFixed(2)}</span></div>`;
+            });
+        }
+    }
+
+    function resetar() {
+        if(confirm("Deseja apagar o banco permanente?")) {
+            localStorage.removeItem('GESTOR_FIN_V4');
+            banco = [];
+            verBanco();
+        }
+    }
+
+    function gerar(dados, nome) {
+        if(dados.length === 0) return alert("Sem dados!");
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            doc.text("Relatorio de Fluxo", 14, 20);
+            
+            const linhas = dados.map(i => [i.dt, i.hr, i.tp, i.txt, i.vlr.toFixed(2)]);
+            const somaTotal = dados.reduce((acc, i) => acc + i.vlr, 0);
+
+            doc.autoTable({
+                startY: 30,
+                head: [['Data', 'Hora', 'Tipo', 'Desc', 'Valor']],
+                body: linhas,
+                foot: [['', '', '', 'VALOR TOTAL:', somaTotal.toFixed(2)]],
+                footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+            });
+
+            doc.save(`${nome}.pdf`);
+        } catch(e) { 
+            console.error(e);
+            alert("Erro ao gerar PDF. Verifique sua conexão.");
+        }
+    }
+    
+    desenhar();
 </script>
 </body>
 </html>
