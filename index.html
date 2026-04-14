@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle Financeiro Final</title>
+    <title>Fluxo de Caixa</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -19,7 +19,6 @@
         .btn-out { background: #ef4444; }
         .btn-pdf { background: #3b82f6; width: 100%; font-size: 1rem; }
         .item-lista { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #f0f0f0; }
-        .msg-erro { color: red; font-size: 12px; text-align: center; display: none; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -41,13 +40,13 @@
     </div>
     
     <button class="btn-pdf" onclick="gerarRelatorio()">Baixar Relatório PDF</button>
-    <div id="erroLog" class="msg-erro"></div>
 
     <div id="historico" style="margin-top:20px; max-height: 250px; overflow-y: auto;"></div>
 </div>
 
 <script>
-    let db = JSON.parse(localStorage.getItem('FINANCAS_V10')) || [];
+    // Inicia sempre vazio. Não carrega nada do histórico anterior do navegador.
+    let db = []; 
 
     function registrar(tipo) {
         const d = document.getElementById('desc');
@@ -58,17 +57,19 @@
             return;
         }
 
+        // Captura a data e hora exata do clique no botão
+        const agora = new Date();
         const novo = {
-            data: new Date().toLocaleDateString('pt-BR'),
-            hora: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
+            data: agora.toLocaleDateString('pt-BR'),
+            hora: agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
             desc: d.value,
             valor: parseFloat(v.value),
             tipo: tipo
         };
 
         db.unshift(novo);
-        localStorage.setItem('FINANCAS_V10', JSON.stringify(db));
-        d.value = ''; v.value = '';
+        d.value = ''; 
+        v.value = '';
         renderizar();
     }
 
@@ -78,7 +79,7 @@
         const tOut = document.getElementById('totalOut');
         let somaIn = 0, somaOut = 0;
 
-        hist.innerHTML = '<strong>Movimentações:</strong>';
+        hist.innerHTML = '<strong>Movimentações da Sessão:</strong>';
         db.forEach(item => {
             if(item.tipo === 'ENTRADA') somaIn += item.valor; else somaOut += item.valor;
             hist.innerHTML += `
@@ -95,62 +96,28 @@
     }
 
     async function gerarRelatorio() {
-        const log = document.getElementById('erroLog');
-        log.style.display = 'none';
+        if (db.length === 0) return alert("Adicione dados primeiro.");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        let tE = 0, tS = 0;
+        db.forEach(r => { if(r.tipo === 'ENTRADA') tE += r.valor; else tS += r.valor; });
 
-        try {
-            if (!window.jspdf) throw new Error("Bibliotecas não carregadas. Verifique sua internet.");
-            if (db.length === 0) throw new Error("Adicione dados primeiro.");
+        doc.setFontSize(18);
+        doc.text("Relatorio de Fluxo de Caixa", 14, 20);
+        
+        const corpo = db.map(r => [r.data, r.hora, r.tipo, r.desc, `R$ ${r.valor.toFixed(2)}`]);
+        doc.autoTable({ startY: 30, head: [['Data', 'Hora', 'Tipo', 'Desc', 'Valor']], body: corpo });
 
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            let tE = 0, tS = 0;
-            const rank = {};
+        let finalY = doc.lastAutoTable.finalY + 10;
+        doc.text(`Total Entradas: R$ ${tE.toFixed(2)}`, 14, finalY);
+        doc.text(`Total Saidas: R$ ${tS.toFixed(2)}`, 14, finalY + 7);
+        doc.text(`SALDO FINAL: R$ ${(tE - tS).toFixed(2)}`, 14, finalY + 14);
 
-            db.forEach(r => {
-                if(r.tipo === 'ENTRADA') tE += r.valor;
-                else {
-                    tS += r.valor;
-                    rank[r.desc.toLowerCase()] = (rank[r.desc.toLowerCase()] || 0) + r.valor;
-                }
-            });
-
-            const top = Object.entries(rank).sort((a,b) => b[1]-a[1]).slice(0,3);
-
-            doc.setFontSize(18);
-            doc.text("Relatorio de Fluxo de Caixa", 14, 20);
-            
-            doc.setFontSize(10);
-            let y = 30;
-            doc.text("MAIORES GASTOS REGISTRADOS:", 14, y);
-            top.forEach((g, i) => { 
-                y += 7; 
-                doc.text(`${i+1}. ${g[0].toUpperCase()}: R$ ${g[1].toFixed(2)}`, 14, y); 
-            });
-
-            const corpo = db.map(r => [r.data, r.hora, r.tipo, r.desc, `R$ ${r.valor.toFixed(2)}`]);
-            doc.autoTable({ 
-                startY: y + 10, 
-                head: [['Data', 'Hora', 'Tipo', 'Desc', 'Valor']], 
-                body: corpo 
-            });
-
-            let finalY = doc.lastAutoTable.finalY + 10;
-            doc.setFont(undefined, 'bold');
-            doc.text(`Total Entradas: R$ ${tE.toFixed(2)}`, 14, finalY);
-            doc.text(`Total Saidas: R$ ${tS.toFixed(2)}`, 14, finalY + 7);
-            doc.text(`SALDO FINAL: R$ ${(tE - tS).toFixed(2)}`, 14, finalY + 14);
-
-            doc.save("Relatorio_Financeiro.pdf");
-        } catch (err) {
-            log.innerText = err.message;
-            log.style.display = 'block';
-        }
+        doc.save("Relatorio_Financeiro.pdf");
     }
 
+    // Garante que a tela comece limpa
     renderizar();
 </script>
-
 </body>
 </html>
